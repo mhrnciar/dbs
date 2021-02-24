@@ -11,5 +11,5 @@ def index(request):
     cursor.execute(query)
     rows = cursor.fetchone()
     t = timedelta(seconds=rows[0].total_seconds())
-    result = {"pgsql": {"uptime": str(t)}}
+    result = {"pgsql": {"uptime": str(t).replace(',', '')}}
     return JsonResponse(result)
