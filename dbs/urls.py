@@ -18,5 +18,6 @@ from django.urls import include, path
 
 urlpatterns = [
     path('v1/health/', include('uptime.urls')),
+    path('v1/ov/submissions', include('ov.urls')),
     path('admin/', admin.site.urls),
 ]
