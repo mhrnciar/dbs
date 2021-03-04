@@ -16,14 +16,4 @@ def index(request):
         return query.post_query(request)
 
     elif request.method == 'DELETE':
-        num = request.GET.get('id', None)
-        if num is not None:
-            cursor = connection.cursor()
-            cursor.execute('SELECT bulletin_issue_id, raw_issue_id FROM ov.or_podanie_issues WHERE id = ' + num + ';')
-            response = cursor.fetchone()
-            bulletin_issue = response[0]
-            raw_isssue = response[1]
-            cursor.execute('DELETE FROM ov.or_podanie_issues WHERE id = ' + num + ';')
-            cursor.execute('DELETE FROM ov.bulletin_issues WHERE id = ' + bulletin_issue + ';')
-            cursor.execute('DELETE FROM ov.raw_issues WHERE id = ' + raw_isssue + ';')
-        return JsonResponse({'method': 'delete'})
+        return query.delete_query(request)
