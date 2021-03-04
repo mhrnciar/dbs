@@ -1,6 +1,7 @@
 from django.db import connection
 from django.http import JsonResponse
 import datetime
+import pytz
 import json
 
 
@@ -37,14 +38,17 @@ def get_query(request):
     if len(result) < per_page:
         count = len(result)
 
-    for i in range(count):
-        entry = {'id': result[i][0], 'br_court_name': result[i][1], 'kind_name': result[i][2], 'cin': result[i][3],
-                 'registration_date': result[i][4], 'corporate_body_name': result[i][5], 'br_section': result[i][6],
-                 'br_insertion': result[i][7], 'text': result[i][8], 'street': result[i][9],
-                 'postal_code': result[i][10], 'city': result[i][11]}
-        response['items'].append(entry)
+    if per_page * (page - 1) < len(result):
+        for i in range(count):
+            entry = {'id': result[i][0], 'br_court_name': result[i][1], 'kind_name': result[i][2], 'cin': result[i][3],
+                     'registration_date': result[i][4], 'corporate_body_name': result[i][5], 'br_section': result[i][6],
+                     'br_insertion': result[i][7], 'text': result[i][8], 'street': result[i][9],
+                     'postal_code': result[i][10], 'city': result[i][11]}
+            response['items'].append(entry)
+    else:
+        return JsonResponse(response, status=404)
 
-    response['metadata'] = {'page': page, 'per_page': per_page, 'pages': 1, 'total': len(result)}
+    response['metadata'] = {'page': page, 'per_page': per_page, 'pages': len(result)/count, 'total': len(result)}
     return JsonResponse(response, status=200)
 
 
@@ -53,7 +57,6 @@ def post_query(request):
     params = json.loads(body_unicode)
     errorstr = {'errors': []}
     cin = 0
-    postal_code = 0
 
     if 'br_court_name' not in params:
         errorstr['errors'].append({'field': 'br_court_name', 'reasons': ['required']})
@@ -64,9 +67,9 @@ def post_query(request):
     if 'cin' not in params:
         errorstr['errors'].append({'field': 'cin', 'reasons': ['required']})
     else:
-        try:
-            cin = int(params['cin'])
-        except ValueError:
+        if isinstance(params['cin'], int):
+            cin = params['cin']
+        else:
             errorstr['errors'].append({'field': 'cin', 'reasons': ['required', 'not_number']})
 
     if 'registration_date' not in params:
@@ -106,13 +109,15 @@ def post_query(request):
     if len(errorstr['errors']) != 0:
         return JsonResponse(errorstr, status=422)
 
-    today = '\'' + str(datetime.datetime.now()) + '\''
+    now = datetime.datetime.now()
+    timezone = pytz.timezone('Europe/Bratislava')
+    today = '\'' + str(now.astimezone(timezone)) + '\''
     year = datetime.date.today().year
     address = params['street'] + ', ' + params['postal_code'] + ' ' + params['city']
 
     cursor = connection.cursor()
-    cursor.execute("INSERT INTO ov.bulletin_issues (year, number, published_at, created_at, updated_at) VALUES ({}, {}, "
-                   "TIMESTAMP {}, TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(year, 26, today, today, today))
+    cursor.execute("INSERT INTO ov.bulletin_issues (year, number, published_at, created_at, updated_at) VALUES ({}, {},"
+                   " TIMESTAMP {}, TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(year, 26, today, today, today))
     bulletin_id = cursor.fetchone()[0]
 
     cursor.execute("INSERT INTO ov.raw_issues (bulletin_issue_id, file_name, content, created_at, updated_at) VALUES "
@@ -122,11 +127,11 @@ def post_query(request):
     insert_query = "INSERT INTO ov.or_podanie_issues (bulletin_issue_id, raw_issue_id, br_mark, br_court_code, " \
                    "br_court_name, kind_code, kind_name, cin, registration_date, corporate_body_name, br_section, " \
                    "br_insertion, text, created_at, updated_at, address_line, street, postal_code, city) VALUES " \
-                   "({}, {}, '{}', '{}', '{}', '{}', '{}', {}, '{}', '{}', '{}', '{}', '{}', TIMESTAMP {}, TIMESTAMP {}, '{}', '{}', '{}', '{}') RETURNING id;".format(
-                    bulletin_id, raw_id, '-', '-', params['br_court_name'], '-', params['kind_name'], cin,
-                    params['registration_date'], params['corporate_body_name'], params['br_section'],
-                    params['br_insertion'], params['text'], today, today, address, params['street'],
-                    params['postal_code'], params['city'])
+                   "({}, {}, '{}', '{}', '{}', '{}', '{}', {}, '{}', '{}', '{}', '{}', '{}', TIMESTAMP {}, " \
+                   "TIMESTAMP {}, '{}', '{}', '{}', '{}') RETURNING id;".format(bulletin_id, raw_id, '-', '-',
+                    params['br_court_name'], '-', params['kind_name'], cin, params['registration_date'],
+                    params['corporate_body_name'], params['br_section'], params['br_insertion'], params['text'], today,
+                    today, address, params['street'], params['postal_code'], params['city'])
 
     cursor.execute(insert_query)
     podanie_id = cursor.fetchone()[0]
@@ -154,10 +159,19 @@ def delete_query(request):
             cursor.execute('SELECT bulletin_issue_id, raw_issue_id FROM ov.or_podanie_issues WHERE id = {};'.format(num))
             response = cursor.fetchone()
             bulletin_issue = response[0]
-            raw_isssue = response[1]
+            raw_issue = response[1]
+
+            cursor.execute('SELECT * FROM ov.or_podanie_issues WHERE bulletin_issue_id = {};'.format(bulletin_issue))
+            bulletin_count = cursor.fetchall()
+            cursor.execute('SELECT * FROM ov.or_podanie_issues WHERE raw_issue_id = {};'.format(raw_issue))
+            raw_count = cursor.fetchall()
             cursor.execute('DELETE FROM ov.or_podanie_issues WHERE id = {};'.format(num))
-            cursor.execute('DELETE FROM ov.raw_issues WHERE id = {};'.format(raw_isssue))
-            cursor.execute('DELETE FROM ov.bulletin_issues WHERE id = {};'.format(bulletin_issue))
+
+            if len(bulletin_count) == 1:
+                cursor.execute('DELETE FROM ov.bulletin_issues WHERE id = {};'.format(bulletin_issue))
+            if len(raw_count) == 1:
+                cursor.execute('DELETE FROM ov.raw_issues WHERE id = {};'.format(raw_issue))
+
             return JsonResponse({}, status=204)
 
         else:
