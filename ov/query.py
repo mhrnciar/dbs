@@ -20,26 +20,53 @@ def get_query(request):
     q = ''
 
     if 'registration_date_gte' in params:
-        gte = 'date_ge(registration_date, \'{}\')'.format(params['registration_date_gte'])
+        gte = 'date_ge(registration_date, \'{}\')'.format(check_str(params['registration_date_gte']))
     if 'registration_date_lte' in params:
-        lte = 'date_le(registration_date, \'{}\')'.format(params['registration_date_lte'])
+        lte = 'date_le(registration_date, \'{}\')'.format(check_str(params['registration_date_lte']))
     if 'query' in params:
-        q = 'corporate_body_name = \'{}\' OR city = \'{}\''.format(check_str(params['query']), params['query'])
+        q = '(corporate_body_name = \'{}\' OR city = \'{}\')'.format(check_str(params['query']), check_str(params['query']))
+
+    string = ''
+    if q != '':
+        string += q
+        if gte != '' and lte == '':
+            string += ' AND ' + gte
+        elif gte != '' and lte != '':
+            string += ' AND ' + gte + ' AND ' + lte
+        elif gte == '' and lte != '':
+            string += ' AND ' + lte
+    else:
+        if gte != '' and lte == '':
+            string += gte
+        elif gte != '' and lte != '':
+            string += gte + ' AND ' + lte
+        else:
+            string += lte
+
 
     query = "id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, br_insertion, " \
             "text, street, postal_code, city"
     cursor = connection.cursor()
-    cursor.execute('SELECT {} FROM ov.or_podanie_issues WHERE {} AND {} ORDER BY {} {};'.format(query, gte, lte,
-                                                                                                order_by, order_type))
+    cursor.execute('SELECT {} FROM ov.or_podanie_issues WHERE {} ORDER BY {} {};'.format(query, string, order_by, order_type))
     result = cursor.fetchall()
     response = {'items': []}
-    count = per_page
+    count = 0
+    pages_count = 0
 
     if len(result) < per_page:
         count = len(result)
+        pages_count = 1
+    else:
+        pages_count = len(result) // per_page
+        count = per_page
+        if len(result) % per_page != 0:
+            pages_count += 1
+            if page == pages_count:
+                count = len(result) % per_page
 
     if per_page * (page - 1) < len(result):
-        for i in range(count):
+        for p in range(count):
+            i = p + (per_page * (page - 1))
             entry = {'id': result[i][0], 'br_court_name': result[i][1], 'kind_name': result[i][2], 'cin': result[i][3],
                      'registration_date': result[i][4], 'corporate_body_name': result[i][5], 'br_section': result[i][6],
                      'br_insertion': result[i][7], 'text': result[i][8], 'street': result[i][9],
@@ -48,7 +75,7 @@ def get_query(request):
     else:
         return JsonResponse(response, status=404)
 
-    response['metadata'] = {'page': page, 'per_page': per_page, 'pages': len(result)/count, 'total': len(result)}
+    response['metadata'] = {'page': page, 'per_page': count, 'pages': pages_count, 'total': len(result)}
     return JsonResponse(response, status=200)
 
 
@@ -56,6 +83,7 @@ def post_query(request):
     body_unicode = request.body.decode('utf-8')
     params = json.loads(body_unicode)
     errorstr = {'errors': []}
+    year = datetime.date.today().year
     cin = 0
 
     if 'br_court_name' not in params:
@@ -76,7 +104,6 @@ def post_query(request):
         errorstr['errors'].append({'field': 'registration_date', 'reasons': ['required']})
     else:
         date = params['registration_date'].split('-')
-        year = datetime.date.today().year
         if int(date[0]) < year or int(date[0]) > year:
             errorstr['errors'].append({'field': 'registration_date', 'reasons': ['required', 'invalid_range']})
 
@@ -109,15 +136,20 @@ def post_query(request):
     if len(errorstr['errors']) != 0:
         return JsonResponse(errorstr, status=422)
 
-    now = datetime.datetime.now()
-    timezone = pytz.timezone('Europe/Bratislava')
-    today = '\'' + str(now.astimezone(timezone)) + '\''
+    now = datetime.datetime.now().astimezone(pytz.timezone('Europe/Bratislava'))
+    today = '\'' + str(now) + '\''
+    published_at = str(datetime.datetime(now.year, now.month, now.day - 1, 0, 0, 0, 0))
+
     year = datetime.date.today().year
     address = params['street'] + ', ' + params['postal_code'] + ' ' + params['city']
 
     cursor = connection.cursor()
+    cursor.execute('SELECT COUNT(*) FROM ov.bulletin_issues WHERE year = {}'.format(year))
+    number = int(cursor.fetchone()[0])
+
     cursor.execute("INSERT INTO ov.bulletin_issues (year, number, published_at, created_at, updated_at) VALUES ({}, {},"
-                   " TIMESTAMP {}, TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(year, 26, today, today, today))
+                   " TIMESTAMP '{}', TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(year, str(number + 1),
+                                                                                       published_at, today, today))
     bulletin_id = cursor.fetchone()[0]
 
     cursor.execute("INSERT INTO ov.raw_issues (bulletin_issue_id, file_name, content, created_at, updated_at) VALUES "
