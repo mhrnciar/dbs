@@ -2,6 +2,7 @@ from django.db import connection
 from django.http import JsonResponse
 import datetime
 import pytz
+from dateutil import parser
 import json
 
 
@@ -12,7 +13,13 @@ def check_str(string):
 def get_query(request):
     params = request.GET
     page = int(params.get('page', 1))
+    if page < 1:
+        page = 1
+
     per_page = int(params.get('per_page', 10))
+    if per_page < 1:
+        per_page = 10
+
     order_by = params.get('order_by', 'registration_date')
     order_type = params.get('order_type', 'desc')
     gte = ''
@@ -20,15 +27,28 @@ def get_query(request):
     q = ''
 
     if 'registration_date_gte' in params:
-        gte = 'date_ge(registration_date, \'{}\')'.format(check_str(params['registration_date_gte']))
+        try:
+            dt = parser.parse(params['registration_date_gte']).astimezone(pytz.utc)
+            gte = 'date_ge(registration_date, \'{}\')'.format(str(dt))
+        except ValueError:
+            gte = ''
     if 'registration_date_lte' in params:
-        lte = 'date_le(registration_date, \'{}\')'.format(check_str(params['registration_date_lte']))
+        try:
+            dt = parser.parse(params['registration_date_lte']).astimezone(pytz.utc)
+            lte = 'date_le(registration_date, \'{}\')'.format(str(dt))
+        except ValueError:
+            lte = ''
     if 'query' in params:
-        q = '(corporate_body_name = \'{}\' OR city = \'{}\')'.format(check_str(params['query']), check_str(params['query']))
+        try:
+            cin = int(params['query'])
+            q = 'cin = {}'.format(cin)
+        except ValueError:
+            q = '(corporate_body_name LIKE \'%{}%\' OR city LIKE \'%{}%\')'.format(check_str(params['query']),
+                                                                                   check_str(params['query']))
 
     string = ''
     if q != '':
-        string += q
+        string += 'WHERE ' + q
         if gte != '' and lte == '':
             string += ' AND ' + gte
         elif gte != '' and lte != '':
@@ -37,17 +57,19 @@ def get_query(request):
             string += ' AND ' + lte
     else:
         if gte != '' and lte == '':
-            string += gte
+            string += 'WHERE ' + gte
         elif gte != '' and lte != '':
-            string += gte + ' AND ' + lte
-        else:
-            string += lte
+            string += 'WHERE ' + gte + ' AND ' + lte
+        elif gte == '' and lte != '':
+            string += 'WHERE ' + lte
 
+    select = 'id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, br_insertion, ' \
+             'text, street, postal_code, city'
 
-    query = "id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, br_insertion, " \
-            "text, street, postal_code, city"
     cursor = connection.cursor()
-    cursor.execute('SELECT {} FROM ov.or_podanie_issues WHERE {} ORDER BY {} {};'.format(query, string, order_by, order_type))
+    query = 'SELECT {} FROM ov.or_podanie_issues {} ORDER BY {} {};'.format(select, string, order_by, order_type)
+    cursor.execute(query)
+
     result = cursor.fetchall()
     response = {'items': []}
     count = 0
@@ -75,7 +97,7 @@ def get_query(request):
     else:
         return JsonResponse(response, status=404)
 
-    response['metadata'] = {'page': page, 'per_page': count, 'pages': pages_count, 'total': len(result)}
+    response['metadata'] = {'page': page, 'per_page': per_page, 'pages': pages_count, 'total': len(result)}
     return JsonResponse(response, status=200)
 
 
@@ -136,42 +158,45 @@ def post_query(request):
     if len(errorstr['errors']) != 0:
         return JsonResponse(errorstr, status=422)
 
-    now = datetime.datetime.now().astimezone(pytz.timezone('Europe/Bratislava'))
+    now = datetime.datetime.now().astimezone(pytz.timezone('UTC'))
     today = '\'' + str(now) + '\''
     published_at = str(datetime.datetime(now.year, now.month, now.day - 1, 0, 0, 0, 0))
-
     year = datetime.date.today().year
     address = params['street'] + ', ' + params['postal_code'] + ' ' + params['city']
 
     cursor = connection.cursor()
-    cursor.execute('SELECT COUNT(*) FROM ov.bulletin_issues WHERE year = {}'.format(year))
+    count_number = 'SELECT COUNT(*) FROM ov.bulletin_issues WHERE year = {}'.format(year)
+    cursor.execute(count_number)
     number = int(cursor.fetchone()[0])
 
-    cursor.execute("INSERT INTO ov.bulletin_issues (year, number, published_at, created_at, updated_at) VALUES ({}, {},"
-                   " TIMESTAMP '{}', TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(year, str(number + 1),
-                                                                                       published_at, today, today))
+    insert_bulletin = "INSERT INTO ov.bulletin_issues (year, number, published_at, created_at, updated_at) VALUES " \
+                      "({}, {}, TIMESTAMP '{}', TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(year, str(number + 1),
+                                                                                            published_at, today, today)
+    cursor.execute(insert_bulletin)
     bulletin_id = cursor.fetchone()[0]
 
-    cursor.execute("INSERT INTO ov.raw_issues (bulletin_issue_id, file_name, content, created_at, updated_at) VALUES "
-                   "({}, '{}', '{}', TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(bulletin_id, '-', '-', today, today))
+    insert_raw = "INSERT INTO ov.raw_issues (bulletin_issue_id, file_name, content, created_at, updated_at) VALUES " \
+                 "({}, '{}', '{}', TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(bulletin_id, '-', '-', today, today)
+    cursor.execute(insert_raw)
     raw_id = cursor.fetchone()[0]
 
-    insert_query = "INSERT INTO ov.or_podanie_issues (bulletin_issue_id, raw_issue_id, br_mark, br_court_code, " \
-                   "br_court_name, kind_code, kind_name, cin, registration_date, corporate_body_name, br_section, " \
-                   "br_insertion, text, created_at, updated_at, address_line, street, postal_code, city) VALUES " \
-                   "({}, {}, '{}', '{}', '{}', '{}', '{}', {}, '{}', '{}', '{}', '{}', '{}', TIMESTAMP {}, " \
-                   "TIMESTAMP {}, '{}', '{}', '{}', '{}') RETURNING id;".format(bulletin_id, raw_id, '-', '-',
-                    params['br_court_name'], '-', params['kind_name'], cin, params['registration_date'],
-                    params['corporate_body_name'], params['br_section'], params['br_insertion'], params['text'], today,
-                    today, address, params['street'], params['postal_code'], params['city'])
-
-    cursor.execute(insert_query)
+    insert_podanie = "INSERT INTO ov.or_podanie_issues (bulletin_issue_id, raw_issue_id, br_mark, br_court_code, " \
+                     "br_court_name, kind_code, kind_name, cin, registration_date, corporate_body_name, br_section, " \
+                     "br_insertion, text, created_at, updated_at, address_line, street, postal_code, city) VALUES " \
+                     "({}, {}, '{}', '{}', '{}', '{}', '{}', {}, '{}', '{}', '{}', '{}', '{}', TIMESTAMP {}, " \
+                     "TIMESTAMP {}, '{}', '{}', '{}', '{}') RETURNING id;".format(bulletin_id, raw_id, '-', '-',
+                     params['br_court_name'], '-', params['kind_name'], cin, params['registration_date'],
+                     params['corporate_body_name'], params['br_section'], params['br_insertion'], params['text'], today,
+                     today, address, params['street'], params['postal_code'], params['city'])
+    cursor.execute(insert_podanie)
     podanie_id = cursor.fetchone()[0]
-    query = "id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, br_insertion, " \
-            "text, street, postal_code, city"
 
-    cursor.execute('SELECT {} FROM ov.or_podanie_issues WHERE id = {};'.format(query, str(podanie_id)))
+    select = "id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, br_insertion, " \
+             "text, street, postal_code, city"
+    query = 'SELECT {} FROM ov.or_podanie_issues WHERE id = {};'.format(select, str(podanie_id))
+    cursor.execute(query)
     result = cursor.fetchone()
+
     response = {'response': {'id': result[0], 'br_court_name': result[1], 'kind_name': result[2], 'cin': result[3],
                              'registration_date': result[4], 'corporate_body_name': result[5], 'br_section': result[6],
                              'br_insertion': result[7], 'text': result[8], 'street': result[9],
@@ -181,28 +206,43 @@ def post_query(request):
 
 
 def delete_query(request):
-    num = request.GET.get('id', None)
+    path = request.path.split('/')
+    num = path[len(path)-1]
+    try:
+        num = int(num)
+    except ValueError:
+        num = None
+
     if num is not None:
         cursor = connection.cursor()
-        cursor.execute('SELECT EXISTS (SELECT TRUE FROM ov.or_podanie_issues WHERE id = {});'.format(num))
+        exist_query = 'SELECT EXISTS (SELECT TRUE FROM ov.or_podanie_issues WHERE id = {});'.format(num)
+        cursor.execute(exist_query)
         exists = cursor.fetchone()
 
         if exists[0]:
-            cursor.execute('SELECT bulletin_issue_id, raw_issue_id FROM ov.or_podanie_issues WHERE id = {};'.format(num))
+            id_query = 'SELECT bulletin_issue_id, raw_issue_id FROM ov.or_podanie_issues WHERE id = {};'.format(num)
+            cursor.execute(id_query)
             response = cursor.fetchone()
             bulletin_issue = response[0]
             raw_issue = response[1]
 
-            cursor.execute('SELECT * FROM ov.or_podanie_issues WHERE bulletin_issue_id = {};'.format(bulletin_issue))
+            bulletin_query = 'SELECT * FROM ov.or_podanie_issues WHERE bulletin_issue_id = {};'.format(bulletin_issue)
+            cursor.execute(bulletin_query)
             bulletin_count = cursor.fetchall()
-            cursor.execute('SELECT * FROM ov.or_podanie_issues WHERE raw_issue_id = {};'.format(raw_issue))
+
+            raw_query = 'SELECT * FROM ov.or_podanie_issues WHERE raw_issue_id = {};'.format(raw_issue)
+            cursor.execute(raw_query)
             raw_count = cursor.fetchall()
-            cursor.execute('DELETE FROM ov.or_podanie_issues WHERE id = {};'.format(num))
+
+            delete_podanie = 'DELETE FROM ov.or_podanie_issues WHERE id = {};'.format(num)
+            cursor.execute(delete_podanie)
 
             if len(bulletin_count) == 1:
-                cursor.execute('DELETE FROM ov.bulletin_issues WHERE id = {};'.format(bulletin_issue))
+                delete_bulletin = 'DELETE FROM ov.bulletin_issues WHERE id = {};'.format(bulletin_issue)
+                cursor.execute(delete_bulletin)
             if len(raw_count) == 1:
-                cursor.execute('DELETE FROM ov.raw_issues WHERE id = {};'.format(raw_issue))
+                delete_raw = 'DELETE FROM ov.raw_issues WHERE id = {};'.format(raw_issue)
+                cursor.execute(delete_raw)
 
             return JsonResponse({}, status=204)
 
