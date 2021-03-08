@@ -165,9 +165,10 @@ def post_query(request):
     address = params['street'] + ', ' + params['postal_code'] + ' ' + params['city']
 
     cursor = connection.cursor()
-    count_number = 'SELECT COUNT(*) FROM ov.bulletin_issues WHERE year = {}'.format(year)
+    count_number = 'SELECT * FROM ov.bulletin_issues WHERE year = {} ORDER BY number DESC'.format(year)
     cursor.execute(count_number)
-    number = int(cursor.fetchone()[0])
+    result = cursor.fetchone()
+    number = int(result[2])
 
     insert_bulletin = "INSERT INTO ov.bulletin_issues (year, number, published_at, created_at, updated_at) VALUES " \
                       "({}, {}, TIMESTAMP '{}', TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(year, str(number + 1),
