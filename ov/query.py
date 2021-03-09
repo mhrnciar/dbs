@@ -83,13 +83,12 @@ def get_query(request):
              'text, street, postal_code, city'
 
     cursor = connection.cursor()
-    query = 'SELECT {} FROM ov.or_podanie_issues {} ORDER BY {} {};'.format(select, string, order_by, order_type)
+    query_params = (select, string, order_by, order_type)
+    query = "SELECT %s FROM ov.or_podanie_issues %s ORDER BY %s %s;" % query_params
     cursor.execute(query)
 
     result = cursor.fetchall()
     response = {'items': []}
-    count = 0
-    pages_count = 0
 
     # Ak je pocet ziskanych zaznamov mensi ako zadany per_page, pocet stran je 1 a vypisu sa vsetky zaznamy (za
     # predpokladu, ze page = 1). Ak je zaznamov viac, vypocita sa pocet stran a ak zostane zvysok po deleni, prida sa
@@ -188,7 +187,7 @@ def post_query(request):
     # o den pred datumom created_at a update_at s vynulovanym casom, takze published_at sa este upravi na dany tvar.
     # Nakoniec sa este posklada adresa zo street, postal_code a city.
     now = datetime.datetime.now().astimezone(pytz.timezone('UTC'))
-    today = '\'' + str(now) + '\''
+    today = str(now)
     published_at = str(datetime.datetime(now.year, now.month, now.day - 1, 0, 0, 0, 0))
     year = datetime.date.today().year
     address = params['street'] + ', ' + params['postal_code'] + ' ' + params['city']
@@ -197,40 +196,43 @@ def post_query(request):
     # ma posledny zadany zaznam, a vkladany sa ulozi s (number + 1). Z vkladania do bulletin_issues sa vrati id
     # vlozeneho zaznamu, ktore sa pouzije pri raw_issues a podanie_issues.
     cursor = connection.cursor()
-    count_number = 'SELECT * FROM ov.bulletin_issues WHERE year = {} ORDER BY number DESC'.format(year)
+    count_number = 'SELECT * FROM ov.bulletin_issues WHERE year = %d ORDER BY number DESC' % (year,)
     cursor.execute(count_number)
     result = cursor.fetchone()
     number = int(result[2])
 
+    bulletin_params = (year, (number + 1), published_at, today, today)
     insert_bulletin = "INSERT INTO ov.bulletin_issues (year, number, published_at, created_at, updated_at) VALUES " \
-                      "({}, {}, TIMESTAMP '{}', TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(year, str(number + 1),
-                                                                                            published_at, today, today)
+                      "(%d, '%s', TIMESTAMP '%s', TIMESTAMP '%s', TIMESTAMP '%s') RETURNING id;" % bulletin_params
     cursor.execute(insert_bulletin)
     bulletin_id = cursor.fetchone()[0]
 
     # Vkladanie zaznamu do raw_issues, rovnako ako pri bulletin_issues sa vrati id, ktore sa pouzije pri podanie_issues.
+    raw_params = (bulletin_id, '-', '-', today, today)
     insert_raw = "INSERT INTO ov.raw_issues (bulletin_issue_id, file_name, content, created_at, updated_at) VALUES " \
-                 "({}, '{}', '{}', TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(bulletin_id, '-', '-', today, today)
-    cursor.execute(insert_raw)
+                 "(%d, '%s', '%s', TIMESTAMP '%s', TIMESTAMP '%s') RETURNING id;" % raw_params
+    cursor.execute(insert_raw, raw_params)
     raw_id = cursor.fetchone()[0]
 
     # Vkladanie vsetkych dat do podanie_issues spolu s id, ktore sa vratili z bulletin_issues a raw_issues. Aj toto
     # vkladanie vrati id, pomocou ktoreho sa skontroluje ci zaznam bol naozaj vlozeny do tabulky.
+    insert_params = (bulletin_id, raw_id, '-', '-', params['br_court_name'], '-', params['kind_name'], cin,
+                     params['registration_date'], params['corporate_body_name'], params['br_section'],
+                     params['br_insertion'], params['text'], today, today, address, params['street'],
+                     params['postal_code'], params['city'])
     insert_podanie = "INSERT INTO ov.or_podanie_issues (bulletin_issue_id, raw_issue_id, br_mark, br_court_code, " \
                      "br_court_name, kind_code, kind_name, cin, registration_date, corporate_body_name, br_section, " \
                      "br_insertion, text, created_at, updated_at, address_line, street, postal_code, city) VALUES " \
-                     "({}, {}, '{}', '{}', '{}', '{}', '{}', {}, '{}', '{}', '{}', '{}', '{}', TIMESTAMP {}, " \
-                     "TIMESTAMP {}, '{}', '{}', '{}', '{}') RETURNING id;".format(bulletin_id, raw_id, '-', '-',
-                     params['br_court_name'], '-', params['kind_name'], cin, params['registration_date'],
-                     params['corporate_body_name'], params['br_section'], params['br_insertion'], params['text'], today,
-                     today, address, params['street'], params['postal_code'], params['city'])
+                     "(%d, %d, '%s', '%s', '%s', '%s', '%s', %d, '%s', '%s', '%s', '%s', '%s', TIMESTAMP '%s', " \
+                     "TIMESTAMP '%s', '%s', '%s', '%s', '%s') RETURNING id;" % insert_params
     cursor.execute(insert_podanie)
     podanie_id = cursor.fetchone()[0]
 
     # Nakoniec sa ziska vlozeny zaznam a vypise sa spolu s id, s ktorym bol vlozeny do podanie_issues.
-    select = "id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, br_insertion, " \
-             "text, street, postal_code, city"
-    query = 'SELECT {} FROM ov.or_podanie_issues WHERE id = {};'.format(select, str(podanie_id))
+    select = 'id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, br_insertion, ' \
+             'text, street, postal_code, city'
+    query_params = (select, podanie_id)
+    query = "SELECT %s FROM ov.or_podanie_issues WHERE id = %d;" % query_params
     cursor.execute(query)
     result = cursor.fetchone()
 
@@ -257,34 +259,34 @@ def delete_query(request):
         # zaznam, ktory ma byt vymazany, zmazu sa aj ony. Zaznam z podanie_issues je zmazany vzdy za predpokladu ze
         # existuje. V pripade uspechu sa vrati prazdna sprava s kodom 204.
         cursor = connection.cursor()
-        exist_query = 'SELECT EXISTS (SELECT TRUE FROM ov.or_podanie_issues WHERE id = {});'.format(num)
+        exist_query = 'SELECT EXISTS (SELECT TRUE FROM ov.or_podanie_issues WHERE id = %d);' % (num,)
         cursor.execute(exist_query)
         exists = cursor.fetchone()
 
         if exists[0]:
-            id_query = 'SELECT bulletin_issue_id, raw_issue_id FROM ov.or_podanie_issues WHERE id = {};'.format(num)
+            id_query = 'SELECT bulletin_issue_id, raw_issue_id FROM ov.or_podanie_issues WHERE id = %d;' % (num,)
             cursor.execute(id_query)
             response = cursor.fetchone()
             bulletin_issue = response[0]
             raw_issue = response[1]
 
-            bulletin_query = 'SELECT * FROM ov.or_podanie_issues WHERE bulletin_issue_id = {};'.format(bulletin_issue)
+            bulletin_query = 'SELECT * FROM ov.or_podanie_issues WHERE bulletin_issue_id = %d;' % (bulletin_issue,)
             cursor.execute(bulletin_query)
             bulletin_count = cursor.fetchall()
 
-            raw_query = 'SELECT * FROM ov.or_podanie_issues WHERE raw_issue_id = {};'.format(raw_issue)
+            raw_query = 'SELECT * FROM ov.or_podanie_issues WHERE raw_issue_id = %d;' % (raw_issue,)
             cursor.execute(raw_query)
             raw_count = cursor.fetchall()
 
-            delete_podanie = 'DELETE FROM ov.or_podanie_issues WHERE id = {};'.format(num)
+            delete_podanie = 'DELETE FROM ov.or_podanie_issues WHERE id = %d;' % (num,)
             cursor.execute(delete_podanie)
 
             # Zistovanie kolko zaznamov odkazuje na zaznamy v bulletin_issues a raw_issues.
             if len(bulletin_count) == 1:
-                delete_bulletin = 'DELETE FROM ov.bulletin_issues WHERE id = {};'.format(bulletin_issue)
+                delete_bulletin = 'DELETE FROM ov.bulletin_issues WHERE id = %d;' % (bulletin_issue,)
                 cursor.execute(delete_bulletin)
             if len(raw_count) == 1:
-                delete_raw = 'DELETE FROM ov.raw_issues WHERE id = {};'.format(raw_issue)
+                delete_raw = 'DELETE FROM ov.raw_issues WHERE id = %d;' % (raw_issue,)
                 cursor.execute(delete_raw)
 
             return JsonResponse({}, status=204)
