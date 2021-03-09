@@ -1,5 +1,6 @@
 from django.db import connection
 from django.http import JsonResponse
+from psycopg2.extensions import AsIs
 import datetime
 import pytz
 from dateutil import parser
@@ -78,14 +79,11 @@ def get_query(request):
         elif gte == '' and lte != '':
             string += 'WHERE ' + lte
 
-    # String na stlpce, ktore chceme ziskat
-    select = 'id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, br_insertion, ' \
-             'text, street, postal_code, city'
-
     cursor = connection.cursor()
-    query_params = (select, string, order_by, order_type)
-    query = "SELECT %s FROM ov.or_podanie_issues %s ORDER BY %s %s;" % query_params
-    cursor.execute(query)
+    query_params = (string, order_by, order_type)
+    query = "SELECT id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, " \
+            "br_insertion, text, street, postal_code, city FROM ov.or_podanie_issues %s ORDER BY %s %s;"
+    cursor.execute(query, (AsIs(string), AsIs(order_by), AsIs(order_type)))
 
     result = cursor.fetchall()
     response = {'items': []}
@@ -196,21 +194,21 @@ def post_query(request):
     # ma posledny zadany zaznam, a vkladany sa ulozi s (number + 1). Z vkladania do bulletin_issues sa vrati id
     # vlozeneho zaznamu, ktore sa pouzije pri raw_issues a podanie_issues.
     cursor = connection.cursor()
-    count_number = 'SELECT * FROM ov.bulletin_issues WHERE year = %d ORDER BY number DESC' % (year,)
-    cursor.execute(count_number)
+    count_number = 'SELECT * FROM ov.bulletin_issues WHERE year = %s ORDER BY number DESC'
+    cursor.execute(count_number, (year,))
     result = cursor.fetchone()
     number = int(result[2])
 
     bulletin_params = (year, (number + 1), published_at, today, today)
     insert_bulletin = "INSERT INTO ov.bulletin_issues (year, number, published_at, created_at, updated_at) VALUES " \
-                      "(%d, '%s', TIMESTAMP '%s', TIMESTAMP '%s', TIMESTAMP '%s') RETURNING id;" % bulletin_params
-    cursor.execute(insert_bulletin)
+                      "(%s, %s, TIMESTAMP %s, TIMESTAMP %s, TIMESTAMP %s) RETURNING id;"
+    cursor.execute(insert_bulletin, bulletin_params)
     bulletin_id = cursor.fetchone()[0]
 
     # Vkladanie zaznamu do raw_issues, rovnako ako pri bulletin_issues sa vrati id, ktore sa pouzije pri podanie_issues.
     raw_params = (bulletin_id, '-', '-', today, today)
     insert_raw = "INSERT INTO ov.raw_issues (bulletin_issue_id, file_name, content, created_at, updated_at) VALUES " \
-                 "(%d, '%s', '%s', TIMESTAMP '%s', TIMESTAMP '%s') RETURNING id;" % raw_params
+                 "(%s, %s, %s, TIMESTAMP %s, TIMESTAMP %s) RETURNING id;"
     cursor.execute(insert_raw, raw_params)
     raw_id = cursor.fetchone()[0]
 
@@ -223,17 +221,15 @@ def post_query(request):
     insert_podanie = "INSERT INTO ov.or_podanie_issues (bulletin_issue_id, raw_issue_id, br_mark, br_court_code, " \
                      "br_court_name, kind_code, kind_name, cin, registration_date, corporate_body_name, br_section, " \
                      "br_insertion, text, created_at, updated_at, address_line, street, postal_code, city) VALUES " \
-                     "(%d, %d, '%s', '%s', '%s', '%s', '%s', %d, '%s', '%s', '%s', '%s', '%s', TIMESTAMP '%s', " \
-                     "TIMESTAMP '%s', '%s', '%s', '%s', '%s') RETURNING id;" % insert_params
-    cursor.execute(insert_podanie)
+                     "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TIMESTAMP %s, " \
+                     "TIMESTAMP %s, %s, %s, %s, %s) RETURNING id;"
+    cursor.execute(insert_podanie, insert_params)
     podanie_id = cursor.fetchone()[0]
 
     # Nakoniec sa ziska vlozeny zaznam a vypise sa spolu s id, s ktorym bol vlozeny do podanie_issues.
-    select = 'id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, br_insertion, ' \
-             'text, street, postal_code, city'
-    query_params = (select, podanie_id)
-    query = "SELECT %s FROM ov.or_podanie_issues WHERE id = %d;" % query_params
-    cursor.execute(query)
+    query = "SELECT id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, " \
+            "br_insertion, text, street, postal_code, city FROM ov.or_podanie_issues WHERE id = %s;"
+    cursor.execute(query, (podanie_id,))
     result = cursor.fetchone()
 
     response = {'response': {'id': result[0], 'br_court_name': result[1], 'kind_name': result[2], 'cin': result[3],
@@ -259,35 +255,35 @@ def delete_query(request):
         # zaznam, ktory ma byt vymazany, zmazu sa aj ony. Zaznam z podanie_issues je zmazany vzdy za predpokladu ze
         # existuje. V pripade uspechu sa vrati prazdna sprava s kodom 204.
         cursor = connection.cursor()
-        exist_query = 'SELECT EXISTS (SELECT TRUE FROM ov.or_podanie_issues WHERE id = %d);' % (num,)
-        cursor.execute(exist_query)
+        exist_query = 'SELECT EXISTS (SELECT TRUE FROM ov.or_podanie_issues WHERE id = %s);'
+        cursor.execute(exist_query, (num,))
         exists = cursor.fetchone()
 
         if exists[0]:
-            id_query = 'SELECT bulletin_issue_id, raw_issue_id FROM ov.or_podanie_issues WHERE id = %d;' % (num,)
-            cursor.execute(id_query)
+            id_query = 'SELECT bulletin_issue_id, raw_issue_id FROM ov.or_podanie_issues WHERE id = %s;'
+            cursor.execute(id_query, (num,))
             response = cursor.fetchone()
             bulletin_issue = response[0]
             raw_issue = response[1]
 
-            bulletin_query = 'SELECT * FROM ov.or_podanie_issues WHERE bulletin_issue_id = %d;' % (bulletin_issue,)
-            cursor.execute(bulletin_query)
+            bulletin_query = 'SELECT * FROM ov.or_podanie_issues WHERE bulletin_issue_id = %s;'
+            cursor.execute(bulletin_query, (bulletin_issue,))
             bulletin_count = cursor.fetchall()
 
-            raw_query = 'SELECT * FROM ov.or_podanie_issues WHERE raw_issue_id = %d;' % (raw_issue,)
-            cursor.execute(raw_query)
+            raw_query = 'SELECT * FROM ov.or_podanie_issues WHERE raw_issue_id = %s;'
+            cursor.execute(raw_query, (raw_issue,))
             raw_count = cursor.fetchall()
 
-            delete_podanie = 'DELETE FROM ov.or_podanie_issues WHERE id = %d;' % (num,)
-            cursor.execute(delete_podanie)
+            delete_podanie = 'DELETE FROM ov.or_podanie_issues WHERE id = %s;'
+            cursor.execute(delete_podanie, (num,))
 
             # Zistovanie kolko zaznamov odkazuje na zaznamy v bulletin_issues a raw_issues.
             if len(bulletin_count) == 1:
-                delete_bulletin = 'DELETE FROM ov.bulletin_issues WHERE id = %d;' % (bulletin_issue,)
-                cursor.execute(delete_bulletin)
+                delete_bulletin = 'DELETE FROM ov.bulletin_issues WHERE id = %s;'
+                cursor.execute(delete_bulletin, (bulletin_issue,))
             if len(raw_count) == 1:
-                delete_raw = 'DELETE FROM ov.raw_issues WHERE id = %d;' % (raw_issue,)
-                cursor.execute(delete_raw)
+                delete_raw = 'DELETE FROM ov.raw_issues WHERE id = %s;'
+                cursor.execute(delete_raw, (raw_issue,))
 
             return JsonResponse({}, status=204)
 
