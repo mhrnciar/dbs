@@ -6,17 +6,28 @@ from dateutil import parser
 import json
 
 
+# Jednoducha operacia, ktora odstrani zo zadanych parametrov vsetko po ; ak sa nejaka najde - velmi primitivny sposob
+# ochrany pred SQL injection
 def check_str(string):
     return string.split(';')[0]
 
 
 def get_query(request):
     params = request.GET
-    page = int(params.get('page', 1))
+
+    # Ziskanie cisla strany a poctu vysledkov na stranu, prednastavene hodnoty su page: 1 a per_page: 10. Ak je zadane
+    # zaporne cislo alebo string, nastavi sa default hodnota.
+    try:
+        page = int(params.get('page', 1))
+    except ValueError:
+        page = 1
     if page < 1:
         page = 1
 
-    per_page = int(params.get('per_page', 10))
+    try:
+        per_page = int(params.get('per_page', 10))
+    except ValueError:
+        per_page = 10
     if per_page < 1:
         per_page = 10
 
@@ -26,6 +37,9 @@ def get_query(request):
     lte = ''
     q = ''
 
+    # Ak boli zadane datumy na filtrovanie, najprv sa zisti, ci su v spravnom tvare tak, ze sa spravi parse a vynimka
+    # sa zachyti. Ak su v spravnom tvare, vytvori sa string s parametrom. Query sa skusi premenit na int a ak to ide,
+    # hlada sa podla cin, v opacnom pripade je to string a hlada sa podla corporate_body_name a city.
     if 'registration_date_gte' in params:
         try:
             dt = parser.parse(params['registration_date_gte']).astimezone(pytz.utc)
@@ -46,6 +60,7 @@ def get_query(request):
             q = '(corporate_body_name LIKE \'%{}%\' OR city LIKE \'%{}%\')'.format(check_str(params['query']),
                                                                                    check_str(params['query']))
 
+    # Skladanie stringu podla toho, ktore parametre pre vyhladavanie boli zadane
     string = ''
     if q != '':
         string += 'WHERE ' + q
@@ -63,6 +78,7 @@ def get_query(request):
         elif gte == '' and lte != '':
             string += 'WHERE ' + lte
 
+    # String na stlpce, ktore chceme ziskat
     select = 'id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, br_insertion, ' \
              'text, street, postal_code, city'
 
@@ -75,6 +91,9 @@ def get_query(request):
     count = 0
     pages_count = 0
 
+    # Ak je pocet ziskanych zaznamov mensi ako zadany per_page, pocet stran je 1 a vypisu sa vsetky zaznamy (za
+    # predpokladu, ze page = 1). Ak je zaznamov viac, vypocita sa pocet stran a ak zostane zvysok po deleni, prida sa
+    # este jedna strana, ktora nie je plna.
     if len(result) < per_page:
         count = len(result)
         pages_count = 1
@@ -86,6 +105,10 @@ def get_query(request):
             if page == pages_count:
                 count = len(result) % per_page
 
+    response['metadata'] = {'page': page, 'per_page': per_page, 'pages': pages_count, 'total': len(result)}
+
+    # Ak vypisujeme stranu, na ktorej su vysledky, vytvori sa pole vysledkov so ziskanymi hodnotami a metadata na konci.
+    # V opacnom pripade sa odosle prazdne pole s metadatami.
     if per_page * (page - 1) < len(result):
         for p in range(count):
             i = p + (per_page * (page - 1))
@@ -97,11 +120,14 @@ def get_query(request):
     else:
         return JsonResponse(response, status=404)
 
-    response['metadata'] = {'page': page, 'per_page': per_page, 'pages': pages_count, 'total': len(result)}
     return JsonResponse(response, status=200)
 
 
 def post_query(request):
+    # Ziskanie a dekodovanie body requestu a priprava dictionary, ktory uklada vsetky chyby. Ak na konci nie je prazdny,
+    # odosle sa ako chybova hlaska. Kazdy required string je skontrolovany ci sa nachadza v body, hodnoty, ktore by
+    # mali byt int (cin a postal_code aj ked ten sa uklada ako string) sa skusia prekonvertovat na int, a pri datume
+    # sa skontroluje ci sa rok zhoduje s aktualnym rokom.
     body_unicode = request.body.decode('utf-8')
     params = json.loads(body_unicode)
     errorstr = {'errors': []}
@@ -158,12 +184,18 @@ def post_query(request):
     if len(errorstr['errors']) != 0:
         return JsonResponse(errorstr, status=422)
 
+    # Pre created_at, updated_at a published_at sa zisti momentalny cas prekonvertovany na UTC. Published_at mal datum
+    # o den pred datumom created_at a update_at s vynulovanym casom, takze published_at sa este upravi na dany tvar.
+    # Nakoniec sa este posklada adresa zo street, postal_code a city.
     now = datetime.datetime.now().astimezone(pytz.timezone('UTC'))
     today = '\'' + str(now) + '\''
     published_at = str(datetime.datetime(now.year, now.month, now.day - 1, 0, 0, 0, 0))
     year = datetime.date.today().year
     address = params['street'] + ', ' + params['postal_code'] + ' ' + params['city']
 
+    # V bulletin_issues sa v danom roku moze nachadzat iba jeden zaznam s danym number, takze sa najprv zisti ake number
+    # ma posledny zadany zaznam, a vkladany sa ulozi s (number + 1). Z vkladania do bulletin_issues sa vrati id
+    # vlozeneho zaznamu, ktore sa pouzije pri raw_issues a podanie_issues.
     cursor = connection.cursor()
     count_number = 'SELECT * FROM ov.bulletin_issues WHERE year = {} ORDER BY number DESC'.format(year)
     cursor.execute(count_number)
@@ -176,11 +208,14 @@ def post_query(request):
     cursor.execute(insert_bulletin)
     bulletin_id = cursor.fetchone()[0]
 
+    # Vkladanie zaznamu do raw_issues, rovnako ako pri bulletin_issues sa vrati id, ktore sa pouzije pri podanie_issues.
     insert_raw = "INSERT INTO ov.raw_issues (bulletin_issue_id, file_name, content, created_at, updated_at) VALUES " \
                  "({}, '{}', '{}', TIMESTAMP {}, TIMESTAMP {}) RETURNING id;".format(bulletin_id, '-', '-', today, today)
     cursor.execute(insert_raw)
     raw_id = cursor.fetchone()[0]
 
+    # Vkladanie vsetkych dat do podanie_issues spolu s id, ktore sa vratili z bulletin_issues a raw_issues. Aj toto
+    # vkladanie vrati id, pomocou ktoreho sa skontroluje ci zaznam bol naozaj vlozeny do tabulky.
     insert_podanie = "INSERT INTO ov.or_podanie_issues (bulletin_issue_id, raw_issue_id, br_mark, br_court_code, " \
                      "br_court_name, kind_code, kind_name, cin, registration_date, corporate_body_name, br_section, " \
                      "br_insertion, text, created_at, updated_at, address_line, street, postal_code, city) VALUES " \
@@ -192,6 +227,7 @@ def post_query(request):
     cursor.execute(insert_podanie)
     podanie_id = cursor.fetchone()[0]
 
+    # Nakoniec sa ziska vlozeny zaznam a vypise sa spolu s id, s ktorym bol vlozeny do podanie_issues.
     select = "id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, br_insertion, " \
              "text, street, postal_code, city"
     query = 'SELECT {} FROM ov.or_podanie_issues WHERE id = {};'.format(select, str(podanie_id))
@@ -207,6 +243,7 @@ def post_query(request):
 
 
 def delete_query(request):
+    # Najprv sa ziska id z URL a skusi sa prekonvertovat na int. Ak to nie je int, vypise sa chybova hlaska.
     path = request.path.split('/')
     num = path[len(path)-1]
     try:
@@ -215,6 +252,10 @@ def delete_query(request):
         num = None
 
     if num is not None:
+        # Zisti sa ci dany zaznam existuje a ak nie, vypise sa chybova hlaska. Inac sa ziskaju id na bulletin_issues a
+        # raw_issues a skontroluje sa, ci na ne neodkazuje viac zaznamov. Ak ano, ponechaju sa a ak na ne odkazuje iba
+        # zaznam, ktory ma byt vymazany, zmazu sa aj ony. Zaznam z podanie_issues je zmazany vzdy za predpokladu ze
+        # existuje. V pripade uspechu sa vrati prazdna sprava s kodom 204.
         cursor = connection.cursor()
         exist_query = 'SELECT EXISTS (SELECT TRUE FROM ov.or_podanie_issues WHERE id = {});'.format(num)
         cursor.execute(exist_query)
@@ -238,6 +279,7 @@ def delete_query(request):
             delete_podanie = 'DELETE FROM ov.or_podanie_issues WHERE id = {};'.format(num)
             cursor.execute(delete_podanie)
 
+            # Zistovanie kolko zaznamov odkazuje na zaznamy v bulletin_issues a raw_issues.
             if len(bulletin_count) == 1:
                 delete_bulletin = 'DELETE FROM ov.bulletin_issues WHERE id = {};'.format(bulletin_issue)
                 cursor.execute(delete_bulletin)
