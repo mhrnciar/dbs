@@ -80,12 +80,14 @@ def get_query(request):
             string += 'WHERE ' + lte
 
     cursor = connection.cursor()
-    query_params = (string, order_by, order_type)
     query = "SELECT id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, " \
             "br_insertion, text, street, postal_code, city FROM ov.or_podanie_issues %s ORDER BY %s %s;"
     cursor.execute(query, (AsIs(string), AsIs(order_by), AsIs(order_type)))
 
     result = cursor.fetchall()
+    if result is None:
+        return JsonResponse({'Query error!'}, status=404)
+
     response = {'items': []}
 
     # Ak je pocet ziskanych zaznamov mensi ako zadany per_page, pocet stran je 1 a vypisu sa vsetky zaznamy (za
@@ -197,20 +199,31 @@ def post_query(request):
     count_number = 'SELECT * FROM ov.bulletin_issues WHERE year = %s ORDER BY number DESC'
     cursor.execute(count_number, (year,))
     result = cursor.fetchone()
+    if result is None:
+        return JsonResponse({'Query error!'}, status=404)
+
     number = int(result[2])
 
     bulletin_params = (year, (number + 1), published_at, today, today)
     insert_bulletin = "INSERT INTO ov.bulletin_issues (year, number, published_at, created_at, updated_at) VALUES " \
                       "(%s, %s, TIMESTAMP %s, TIMESTAMP %s, TIMESTAMP %s) RETURNING id;"
     cursor.execute(insert_bulletin, bulletin_params)
-    bulletin_id = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    if result is None:
+        return JsonResponse({'Query error!'}, status=404)
+
+    bulletin_id = result[0]
 
     # Vkladanie zaznamu do raw_issues, rovnako ako pri bulletin_issues sa vrati id, ktore sa pouzije pri podanie_issues.
     raw_params = (bulletin_id, '-', '-', today, today)
     insert_raw = "INSERT INTO ov.raw_issues (bulletin_issue_id, file_name, content, created_at, updated_at) VALUES " \
                  "(%s, %s, %s, TIMESTAMP %s, TIMESTAMP %s) RETURNING id;"
     cursor.execute(insert_raw, raw_params)
-    raw_id = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    if result is None:
+        return JsonResponse({'Query error!'}, status=404)
+
+    raw_id = result[0]
 
     # Vkladanie vsetkych dat do podanie_issues spolu s id, ktore sa vratili z bulletin_issues a raw_issues. Aj toto
     # vkladanie vrati id, pomocou ktoreho sa skontroluje ci zaznam bol naozaj vlozeny do tabulky.
@@ -224,13 +237,18 @@ def post_query(request):
                      "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TIMESTAMP %s, " \
                      "TIMESTAMP %s, %s, %s, %s, %s) RETURNING id;"
     cursor.execute(insert_podanie, insert_params)
-    podanie_id = cursor.fetchone()[0]
+    result = cursor.fetchone()
+    if result is None:
+        return JsonResponse({'Query error!'}, status=404)
+    podanie_id = result[0]
 
     # Nakoniec sa ziska vlozeny zaznam a vypise sa spolu s id, s ktorym bol vlozeny do podanie_issues.
     query = "SELECT id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, " \
             "br_insertion, text, street, postal_code, city FROM ov.or_podanie_issues WHERE id = %s;"
     cursor.execute(query, (podanie_id,))
     result = cursor.fetchone()
+    if result is None:
+        return JsonResponse({'Query error!'}, status=404)
 
     response = {'response': {'id': result[0], 'br_court_name': result[1], 'kind_name': result[2], 'cin': result[3],
                              'registration_date': result[4], 'corporate_body_name': result[5], 'br_section': result[6],
@@ -258,21 +276,29 @@ def delete_query(request):
         exist_query = 'SELECT EXISTS (SELECT TRUE FROM ov.or_podanie_issues WHERE id = %s);'
         cursor.execute(exist_query, (num,))
         exists = cursor.fetchone()
+        if exists is None:
+            return JsonResponse({'Query error!'}, status=404)
 
         if exists[0]:
             id_query = 'SELECT bulletin_issue_id, raw_issue_id FROM ov.or_podanie_issues WHERE id = %s;'
             cursor.execute(id_query, (num,))
             response = cursor.fetchone()
+            if response is None:
+                return JsonResponse({'Query error!'}, status=404)
             bulletin_issue = response[0]
             raw_issue = response[1]
 
             bulletin_query = 'SELECT * FROM ov.or_podanie_issues WHERE bulletin_issue_id = %s;'
             cursor.execute(bulletin_query, (bulletin_issue,))
             bulletin_count = cursor.fetchall()
+            if bulletin_count is None:
+                return JsonResponse({'Query error!'}, status=404)
 
             raw_query = 'SELECT * FROM ov.or_podanie_issues WHERE raw_issue_id = %s;'
             cursor.execute(raw_query, (raw_issue,))
             raw_count = cursor.fetchall()
+            if raw_count is None:
+                return JsonResponse({'Query error!'}, status=404)
 
             delete_podanie = 'DELETE FROM ov.or_podanie_issues WHERE id = %s;'
             cursor.execute(delete_podanie, (num,))
