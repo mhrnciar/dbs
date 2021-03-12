@@ -36,7 +36,6 @@ ALLOWED_HOSTS = [
 # Application definition
 
 INSTALLED_APPS = [
-    'ov.apps.OvConfig',
     'rest_framework',
     'django.contrib.admin',
     'django.contrib.auth',

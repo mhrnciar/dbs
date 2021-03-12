@@ -81,36 +81,41 @@ def get_query(request):
 
     cursor = connection.cursor()
     query = "SELECT id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, " \
-            "br_insertion, text, street, postal_code, city FROM ov.or_podanie_issues %s ORDER BY %s %s;"
-    cursor.execute(query, (AsIs(string), AsIs(order_by), AsIs(order_type)))
+            "br_insertion, text, street, postal_code, city FROM ov.or_podanie_issues %s ORDER BY %s %s LIMIT %s OFFSET %s;"
+    cursor.execute(query, (AsIs(string), AsIs(order_by), AsIs(order_type), per_page, (per_page * (page - 1))))
 
     result = cursor.fetchall()
     if result is None:
         return JsonResponse({'Query error!'}, status=404)
+
+    query = "SELECT COUNT(*) FROM ov.or_podanie_issues %s;"
+    cursor.execute(query, (AsIs(string),))
+
+    response = cursor.fetchone()
+    if response is None:
+        return JsonResponse({'Query error!'}, status=404)
+    total = response[0]
 
     response = {'items': []}
 
     # Ak je pocet ziskanych zaznamov mensi ako zadany per_page, pocet stran je 1 a vypisu sa vsetky zaznamy (za
     # predpokladu, ze page = 1). Ak je zaznamov viac, vypocita sa pocet stran a ak zostane zvysok po deleni, prida sa
     # este jedna strana, ktora nie je plna.
+    pages_count = total // per_page
+    if total % per_page != 0:
+        pages_count += 1
+
     if len(result) < per_page:
         count = len(result)
-        pages_count = 1
     else:
-        pages_count = len(result) // per_page
         count = per_page
-        if len(result) % per_page != 0:
-            pages_count += 1
-            if page == pages_count:
-                count = len(result) % per_page
 
-    response['metadata'] = {'page': page, 'per_page': per_page, 'pages': pages_count, 'total': len(result)}
+    response['metadata'] = {'page': page, 'per_page': per_page, 'pages': pages_count, 'total': total}
 
     # Ak vypisujeme stranu, na ktorej su vysledky, vytvori sa pole vysledkov so ziskanymi hodnotami a metadata na konci.
     # V opacnom pripade sa odosle prazdne pole s metadatami.
-    if per_page * (page - 1) < len(result):
-        for p in range(count):
-            i = p + (per_page * (page - 1))
+    if page <= pages_count:
+        for i in range(count):
             entry = {'id': result[i][0], 'br_court_name': result[i][1], 'kind_name': result[i][2], 'cin': result[i][3],
                      'registration_date': result[i][4], 'corporate_body_name': result[i][5], 'br_section': result[i][6],
                      'br_insertion': result[i][7], 'text': result[i][8], 'street': result[i][9],
