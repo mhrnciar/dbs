@@ -32,8 +32,14 @@ def get_query(request):
     if per_page < 1:
         per_page = 10
 
-    order_by = params.get('order_by', 'registration_date')
-    order_type = params.get('order_type', 'desc')
+    order_by = params.get('order_by', 'registration_date').lower()
+    if order_by not in ('id', 'br_court_name', 'kind_name', 'cin', 'registration_date', 'corporate_body_name',
+                        'br_section', 'br_insertion', 'text', 'street', 'postal_code', 'city'):
+        order_by = 'registration_date'
+
+    order_type = params.get('order_type', 'desc').lower()
+    if order_type not in ('asc', 'desc'):
+        order_type = 'desc'
     gte = ''
     lte = ''
     q = ''
@@ -81,7 +87,8 @@ def get_query(request):
 
     cursor = connection.cursor()
     query = "SELECT id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, " \
-            "br_insertion, text, street, postal_code, city FROM ov.or_podanie_issues %s ORDER BY %s %s LIMIT %s OFFSET %s;"
+            "br_insertion, text, street, postal_code, city FROM ov.or_podanie_issues %s ORDER BY %s %s " \
+            "LIMIT %s OFFSET %s;"
     cursor.execute(query, (AsIs(string), AsIs(order_by), AsIs(order_type), per_page, (per_page * (page - 1))))
 
     result = cursor.fetchall()
@@ -105,21 +112,15 @@ def get_query(request):
     if total % per_page != 0:
         pages_count += 1
 
-    if len(result) < per_page:
-        count = len(result)
-    else:
-        count = per_page
-
     response['metadata'] = {'page': page, 'per_page': per_page, 'pages': pages_count, 'total': total}
 
     # Ak vypisujeme stranu, na ktorej su vysledky, vytvori sa pole vysledkov so ziskanymi hodnotami a metadata na konci.
     # V opacnom pripade sa odosle prazdne pole s metadatami.
     if page <= pages_count:
-        for i in range(count):
-            entry = {'id': result[i][0], 'br_court_name': result[i][1], 'kind_name': result[i][2], 'cin': result[i][3],
-                     'registration_date': result[i][4], 'corporate_body_name': result[i][5], 'br_section': result[i][6],
-                     'br_insertion': result[i][7], 'text': result[i][8], 'street': result[i][9],
-                     'postal_code': result[i][10], 'city': result[i][11]}
+        for row in result:
+            entry = {'id': row[0], 'br_court_name': row[1], 'kind_name': row[2], 'cin': row[3],
+                     'registration_date': row[4], 'corporate_body_name': row[5], 'br_section': row[6],
+                     'br_insertion': row[7], 'text': row[8], 'street': row[9], 'postal_code': row[10], 'city': row[11]}
             response['items'].append(entry)
     else:
         return JsonResponse(response, status=404)
@@ -147,17 +148,21 @@ def post_query(request):
     if 'cin' not in params:
         errorstr['errors'].append({'field': 'cin', 'reasons': ['required']})
     else:
-        if isinstance(params['cin'], int):
-            cin = params['cin']
-        else:
+        try:
+            cin = int(params['cin'])
+        except ValueError:
             errorstr['errors'].append({'field': 'cin', 'reasons': ['required', 'not_number']})
 
     if 'registration_date' not in params:
         errorstr['errors'].append({'field': 'registration_date', 'reasons': ['required']})
     else:
-        date = params['registration_date'].split('-')
-        if int(date[0]) < year or int(date[0]) > year:
-            errorstr['errors'].append({'field': 'registration_date', 'reasons': ['required', 'invalid_range']})
+        try:
+            dt = parser.parse(params['registration_date']).astimezone(pytz.utc)
+            date = datetime.date(dt.year, dt.month, dt.day)
+            if date.year != year:
+                errorstr['errors'].append({'field': 'registration_date', 'reasons': ['required', 'invalid_range']})
+        except ValueError:
+            errorstr['errors'].append({'field': 'registration_date', 'reasons': ['required', 'invalid_date']})
 
     if 'corporate_body_name' not in params:
         errorstr['errors'].append({'field': 'corporate_body_name', 'reasons': ['required']})
@@ -194,20 +199,19 @@ def post_query(request):
     now = datetime.datetime.now().astimezone(pytz.timezone('UTC'))
     today = str(now)
     published_at = str(datetime.datetime(now.year, now.month, now.day - 1, 0, 0, 0, 0))
-    year = datetime.date.today().year
     address = params['street'] + ', ' + params['postal_code'] + ' ' + params['city']
 
     # V bulletin_issues sa v danom roku moze nachadzat iba jeden zaznam s danym number, takze sa najprv zisti ake number
     # ma posledny zadany zaznam, a vkladany sa ulozi s (number + 1). Z vkladania do bulletin_issues sa vrati id
     # vlozeneho zaznamu, ktore sa pouzije pri raw_issues a podanie_issues.
     cursor = connection.cursor()
-    count_number = 'SELECT * FROM ov.bulletin_issues WHERE year = %s ORDER BY number DESC'
+    count_number = 'SELECT number FROM ov.bulletin_issues WHERE year = %s ORDER BY number DESC'
     cursor.execute(count_number, (year,))
     result = cursor.fetchone()
     if result is None:
         return JsonResponse({'Query error!'}, status=404)
 
-    number = int(result[2])
+    number = int(result[0])
 
     bulletin_params = (year, (number + 1), published_at, today, today)
     insert_bulletin = "INSERT INTO ov.bulletin_issues (year, number, published_at, created_at, updated_at) VALUES " \
