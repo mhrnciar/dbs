@@ -32,6 +32,9 @@ def get_query(request):
     if per_page < 1:
         per_page = 10
 
+    # Standardne hodnoty pre zoradovanie su registration_date desc, ktore sa nastavia aj v pripade ze je zadany
+    # neplatny stlpec alebo sposob zoradenia. Premenna sa nastavi na male pismena, takze je jedno ako je parameter
+    # zadany za predpokladu ze je spravny.
     order_by = params.get('order_by', 'registration_date').lower()
     if order_by not in ('id', 'br_court_name', 'kind_name', 'cin', 'registration_date', 'corporate_body_name',
                         'br_section', 'br_insertion', 'text', 'street', 'postal_code', 'city'):
@@ -85,6 +88,7 @@ def get_query(request):
         elif gte == '' and lte != '':
             string += 'WHERE ' + lte
 
+    # Vytvori sa kurzor a najprv sa vykona select na vysledky, a potom sa spocitaju vsetky riadky z danej query.
     cursor = connection.cursor()
     query = "SELECT id, br_court_name, kind_name, cin, registration_date, corporate_body_name, br_section, " \
             "br_insertion, text, street, postal_code, city FROM ov.or_podanie_issues %s ORDER BY %s %s " \
@@ -93,14 +97,14 @@ def get_query(request):
 
     result = cursor.fetchall()
     if result is None:
-        return JsonResponse({'Query error!'}, status=404)
+        return JsonResponse({'Query error (SELECT)!'}, status=404)
 
     query = "SELECT COUNT(*) FROM ov.or_podanie_issues %s;"
     cursor.execute(query, (AsIs(string),))
 
     response = cursor.fetchone()
     if response is None:
-        return JsonResponse({'Query error!'}, status=404)
+        return JsonResponse({'Query error (SELECT COUNT)!'}, status=404)
     total = response[0]
 
     response = {'items': []}
@@ -114,8 +118,8 @@ def get_query(request):
 
     response['metadata'] = {'page': page, 'per_page': per_page, 'pages': pages_count, 'total': total}
 
-    # Ak vypisujeme stranu, na ktorej su vysledky, vytvori sa pole vysledkov so ziskanymi hodnotami a metadata na konci.
-    # V opacnom pripade sa odosle prazdne pole s metadatami.
+    # Ak vypisujeme stranu, na ktorej su vysledky, vytvori sa pole vysledkov so ziskanymi hodnotami a metadatami na
+    # konci. V opacnom pripade sa odosle prazdne pole s metadatami.
     if page <= pages_count:
         for row in result:
             entry = {'id': row[0], 'br_court_name': row[1], 'kind_name': row[2], 'cin': row[3],
@@ -129,7 +133,7 @@ def get_query(request):
 
 
 def post_query(request):
-    # Ziskanie a dekodovanie body requestu a priprava dictionary, ktory uklada vsetky chyby. Ak na konci nie je prazdny,
+    # Telo requestu sa dekoduje a pripravi sa dictionary, ktory uklada vsetky chyby. Ak na konci nie je prazdny,
     # odosle sa ako chybova hlaska. Kazdy required string je skontrolovany ci sa nachadza v body, hodnoty, ktore by
     # mali byt int (cin a postal_code aj ked ten sa uklada ako string) sa skusia prekonvertovat na int, a pri datume
     # sa skontroluje ci sa rok zhoduje s aktualnym rokom.
@@ -193,9 +197,9 @@ def post_query(request):
     if len(errorstr['errors']) != 0:
         return JsonResponse(errorstr, status=422)
 
-    # Pre created_at, updated_at a published_at sa zisti momentalny cas prekonvertovany na UTC. Published_at mal datum
-    # o den pred datumom created_at a update_at s vynulovanym casom, takze published_at sa este upravi na dany tvar.
-    # Nakoniec sa este posklada adresa zo street, postal_code a city.
+    # Pre created_at, updated_at a published_at sa zisti momentalny cas prekonvertovany na UTC. Published_at v databaze
+    # ma datum o den pred datumom created_at a update_at s vynulovanym casom, takze published_at sa este upravi na dany
+    # tvar. Nakoniec sa este posklada adresa zo street, postal_code a city.
     now = datetime.datetime.now().astimezone(pytz.timezone('UTC'))
     today = str(now)
     published_at = str(datetime.datetime(now.year, now.month, now.day - 1, 0, 0, 0, 0))
@@ -209,7 +213,7 @@ def post_query(request):
     cursor.execute(count_number, (year,))
     result = cursor.fetchone()
     if result is None:
-        return JsonResponse({'Query error!'}, status=404)
+        return JsonResponse({'Query error (SELECT bulletin_issues)!'}, status=404)
 
     number = int(result[0])
 
@@ -219,7 +223,7 @@ def post_query(request):
     cursor.execute(insert_bulletin, bulletin_params)
     result = cursor.fetchone()
     if result is None:
-        return JsonResponse({'Query error!'}, status=404)
+        return JsonResponse({'Query error (INSERT bulletin_issues)!'}, status=404)
 
     bulletin_id = result[0]
 
@@ -230,7 +234,7 @@ def post_query(request):
     cursor.execute(insert_raw, raw_params)
     result = cursor.fetchone()
     if result is None:
-        return JsonResponse({'Query error!'}, status=404)
+        return JsonResponse({'Query error (INSERT raw_issues)!'}, status=404)
 
     raw_id = result[0]
 
@@ -248,7 +252,7 @@ def post_query(request):
     cursor.execute(insert_podanie, insert_params)
     result = cursor.fetchone()
     if result is None:
-        return JsonResponse({'Query error!'}, status=404)
+        return JsonResponse({'Query error (INSERT or_podanie_issues)!'}, status=404)
     podanie_id = result[0]
 
     # Nakoniec sa ziska vlozeny zaznam a vypise sa spolu s id, s ktorym bol vlozeny do podanie_issues.
@@ -257,7 +261,7 @@ def post_query(request):
     cursor.execute(query, (podanie_id,))
     result = cursor.fetchone()
     if result is None:
-        return JsonResponse({'Query error!'}, status=404)
+        return JsonResponse({'Query error (SELECT or_podanie_issues)!'}, status=404)
 
     response = {'response': {'id': result[0], 'br_court_name': result[1], 'kind_name': result[2], 'cin': result[3],
                              'registration_date': result[4], 'corporate_body_name': result[5], 'br_section': result[6],
@@ -286,37 +290,37 @@ def delete_query(request):
         cursor.execute(exist_query, (num,))
         exists = cursor.fetchone()
         if exists is None:
-            return JsonResponse({'Query error!'}, status=404)
+            return JsonResponse({'Query error (SELECT EXISTS)!'}, status=404)
 
         if exists[0]:
             id_query = 'SELECT bulletin_issue_id, raw_issue_id FROM ov.or_podanie_issues WHERE id = %s;'
             cursor.execute(id_query, (num,))
             response = cursor.fetchone()
             if response is None:
-                return JsonResponse({'Query error!'}, status=404)
+                return JsonResponse({'Query error (SELECT bulletin_id, raw_id)!'}, status=404)
             bulletin_issue = response[0]
             raw_issue = response[1]
 
-            bulletin_query = 'SELECT * FROM ov.or_podanie_issues WHERE bulletin_issue_id = %s;'
+            bulletin_query = 'SELECT COUNT(*) FROM ov.or_podanie_issues WHERE bulletin_issue_id = %s;'
             cursor.execute(bulletin_query, (bulletin_issue,))
-            bulletin_count = cursor.fetchall()
+            bulletin_count = cursor.fetchone()
             if bulletin_count is None:
-                return JsonResponse({'Query error!'}, status=404)
+                return JsonResponse({'Query error (SELECT bulletin_issues COUNT)!'}, status=404)
 
-            raw_query = 'SELECT * FROM ov.or_podanie_issues WHERE raw_issue_id = %s;'
+            raw_query = 'SELECT COUNT(*) FROM ov.or_podanie_issues WHERE raw_issue_id = %s;'
             cursor.execute(raw_query, (raw_issue,))
-            raw_count = cursor.fetchall()
+            raw_count = cursor.fetchone()
             if raw_count is None:
-                return JsonResponse({'Query error!'}, status=404)
+                return JsonResponse({'Query error (SELECT raw_issues COUNT)!'}, status=404)
 
             delete_podanie = 'DELETE FROM ov.or_podanie_issues WHERE id = %s;'
             cursor.execute(delete_podanie, (num,))
 
             # Zistovanie kolko zaznamov odkazuje na zaznamy v bulletin_issues a raw_issues.
-            if len(bulletin_count) == 1:
+            if bulletin_count[0] == 1:
                 delete_bulletin = 'DELETE FROM ov.bulletin_issues WHERE id = %s;'
                 cursor.execute(delete_bulletin, (bulletin_issue,))
-            if len(raw_count) == 1:
+            if raw_count[0] == 1:
                 delete_raw = 'DELETE FROM ov.raw_issues WHERE id = %s;'
                 cursor.execute(delete_raw, (raw_issue,))
 

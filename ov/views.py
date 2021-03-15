@@ -1,4 +1,3 @@
-from django.shortcuts import render
 from . import query
 from django.views.decorators.csrf import csrf_exempt
 
