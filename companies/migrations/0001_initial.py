@@ -11,16 +11,13 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.CreateModel(
-            name='companies',
-            fields=[
-                ('cin', models.BigIntegerField(primary_key=True)),
-                ('name', models.CharField(max_length=300, null=True)),
-                ('br_section', models.CharField(max_length=50, null=True)),
-                ('address_line', models.CharField(max_length=300, null=True)),
-                ('created_at', models.DateTimeField()),
-                ('updated_at', models.DateTimeField()),
-                ('last_update', models.DateTimeField()),
-            ],
-        ),
+        migrations.RunSQL(sql='CREATE TABLE ov.companies (cin bigint NOT NULL,'
+                              'name varchar(300),'
+                              'br_section varchar(50),'
+                              'address_line varchar(300),'
+                              'created_at timestamp without time zone,'
+                              'updated_at timestamp without time zone,'
+                              'last_update timestamp without time zone,'
+                              'PRIMARY KEY (cin));',
+                          reverse_sql='DROP TABLE IF EXISTS ov.companies;')
     ]

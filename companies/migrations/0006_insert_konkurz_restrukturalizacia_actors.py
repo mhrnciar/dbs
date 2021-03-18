@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(sql="INSERT INTO ov.companies_companies (cin, name, address_line, created_at, "
+        migrations.RunSQL(sql="INSERT INTO ov.companies (cin, name, address_line, created_at, "
                           "updated_at, last_update) SELECT DISTINCT ON (cin) "
                           "cin, "
                           "corporate_body_name, "
@@ -21,5 +21,5 @@ class Migration(migrations.Migration):
                           "OVER(PARTITION BY cin ORDER BY updated_at DESC) "
                           "FROM ov.konkurz_restrukturalizacia_actors WHERE cin IS NOT NULL "
                           "ON CONFLICT (cin) DO NOTHING;",
-                          reverse_sql='DROP TABLE IF EXISTS ov.companies_companies;')
+                          reverse_sql='DROP TABLE IF EXISTS ov.companies;')
     ]
