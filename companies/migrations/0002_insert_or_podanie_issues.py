@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(sql="INSERT INTO ov.companies_companies (cin, name, br_section, address_line, created_at, "
+        migrations.RunSQL(sql="INSERT INTO ov.companies (cin, name, br_section, address_line, created_at, "
                           "updated_at, last_update) SELECT DISTINCT ON (cin) "
                           "cin, "
                           "corporate_body_name, "
@@ -21,5 +21,5 @@ class Migration(migrations.Migration):
                           "max(updated_at) "
                           "OVER(PARTITION BY cin ORDER BY updated_at DESC) "
                           "FROM ov.or_podanie_issues WHERE cin IS NOT NULL;",
-                          reverse_sql='DROP TABLE IF EXISTS ov.companies_companies;')
+                          reverse_sql='DROP TABLE IF EXISTS ov.companies;')
     ]
