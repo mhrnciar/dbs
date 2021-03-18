@@ -253,6 +253,7 @@ def post_query(request):
     result = cursor.fetchone()
     if result is None:
         return JsonResponse({'Query error (INSERT or_podanie_issues)!'}, status=404)
+
     podanie_id = result[0]
 
     # Nakoniec sa ziska vlozeny zaznam a vypise sa spolu s id, s ktorym bol vlozeny do podanie_issues.
