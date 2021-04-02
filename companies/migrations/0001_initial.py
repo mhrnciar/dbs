@@ -15,9 +15,9 @@ class Migration(migrations.Migration):
                               'name varchar(300),'
                               'br_section varchar(50),'
                               'address_line varchar(300),'
+                              'last_update timestamp without time zone,'
                               'created_at timestamp without time zone,'
                               'updated_at timestamp without time zone,'
-                              'last_update timestamp without time zone,'
                               'PRIMARY KEY (cin));',
                           reverse_sql='DROP TABLE IF EXISTS ov.companies;')
     ]

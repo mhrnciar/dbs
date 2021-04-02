@@ -16,9 +16,9 @@ class Migration(migrations.Migration):
                           "corporate_body_name, "
                           "br_section, "
                           "concat_ws(' ', concat_ws(', ', street, postal_code), city), "
-                          "created_at, "
-                          "updated_at, "
-                          "max(updated_at) "
+                          "current_timestamp, "
+                          "current_timestamp, "
+                          "last_value(updated_at) "
                           "OVER(PARTITION BY cin ORDER BY updated_at DESC) "
                           "FROM ov.znizenie_imania_issues WHERE cin IS NOT NULL ON CONFLICT (cin) DO NOTHING;",
                           reverse_sql='DROP TABLE IF EXISTS ov.companies;')
