@@ -117,7 +117,7 @@ def index(request):
         if total > 0:
             for row in result:
                 entry = {'cin': row[0], 'name': row[1], 'br_section': row[2], 'address_line': row[3],
-                         'last_update': row[4], 'or_podanie_issues_count': row[5],
+                         'last_update': str(row[4]), 'or_podanie_issues_count': row[5],
                          'znizenie_imania_issues_count': row[6], 'likvidator_issues_count': row[7],
                          'konkurz_vyrovnanie_issues_count': row[8], 'konkurz_restrukturalizacia_actors_count': row[9]}
                 response['items'].append(entry)

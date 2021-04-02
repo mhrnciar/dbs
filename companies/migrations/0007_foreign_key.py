@@ -32,31 +32,30 @@ class Migration(migrations.Migration):
                           reverse_sql='ALTER TABLE ov.konkurz_restrukturalizacia_actors DROP CONSTRAINT '
                                       'IF EXISTS fk_companies;'),
 
-        '''
-        migrations.RunSQL(sql='ALTER TABLE ov.or_podanie_issues ADD COLUMN company_id bigint; '
-                              'UPDATE ov.or_podanie_issues AS o SET company_id = c.cin '
-                              'FROM ov.companies c WHERE c.cin = o.cin;',
-                          reverse_sql='ALTER TABLE ov.or_podanie_issues DROP COLUMN IF EXISTS company_id;'),
 
-        migrations.RunSQL(sql='ALTER TABLE ov.znizenie_imania_issues ADD COLUMN company_id bigint; '
-                              'UPDATE ov.znizenie_imania_issues AS o SET company_id = c.cin '
-                              'FROM ov.companies c WHERE c.cin = o.cin;',
-                          reverse_sql='ALTER TABLE ov.znizenie_imania_issues DROP COLUMN IF EXISTS company_id;'),
-
-        migrations.RunSQL(sql='ALTER TABLE ov.likvidator_issues ADD COLUMN company_id bigint; '
-                              'UPDATE ov.likvidator_issues AS o SET company_id = c.cin '
-                              'FROM ov.companies c WHERE c.cin = o.cin;',
-                          reverse_sql='ALTER TABLE ov.likvidator_issues DROP COLUMN IF EXISTS company_id;'),
-
-        migrations.RunSQL(sql='ALTER TABLE ov.konkurz_vyrovnanie_issues ADD COLUMN company_id bigint; '
-                              'UPDATE ov.konkurz_vyrovnanie_issues AS o SET company_id = c.cin '
-                              'FROM ov.companies c WHERE c.cin = o.cin;',
-                          reverse_sql='ALTER TABLE ov.konkurz_vyrovnanie_issues DROP COLUMN IF EXISTS company_id;'),
-
-        migrations.RunSQL(sql='ALTER TABLE ov.konkurz_restrukturalizacia_actors ADD COLUMN company_id bigint; '
-                              'UPDATE ov.konkurz_restrukturalizacia_actors AS o SET company_id = c.cin '
-                              'FROM ov.companies c WHERE c.cin = o.cin;',
-                          reverse_sql='ALTER TABLE ov.konkurz_restrukturalizacia_actors '
-                                      'DROP COLUMN IF EXISTS company_id;')
-        '''
+        # migrations.RunSQL(sql='ALTER TABLE ov.or_podanie_issues ADD COLUMN company_id bigint; '
+        #                       'UPDATE ov.or_podanie_issues AS o SET company_id = c.cin '
+        #                       'FROM ov.companies c WHERE c.cin = o.cin;',
+        #                   reverse_sql='ALTER TABLE ov.or_podanie_issues DROP COLUMN IF EXISTS company_id;'),
+        #
+        # migrations.RunSQL(sql='ALTER TABLE ov.znizenie_imania_issues ADD COLUMN company_id bigint; '
+        #                       'UPDATE ov.znizenie_imania_issues AS o SET company_id = c.cin '
+        #                       'FROM ov.companies c WHERE c.cin = o.cin;',
+        #                   reverse_sql='ALTER TABLE ov.znizenie_imania_issues DROP COLUMN IF EXISTS company_id;'),
+        #
+        # migrations.RunSQL(sql='ALTER TABLE ov.likvidator_issues ADD COLUMN company_id bigint; '
+        #                       'UPDATE ov.likvidator_issues AS o SET company_id = c.cin '
+        #                       'FROM ov.companies c WHERE c.cin = o.cin;',
+        #                   reverse_sql='ALTER TABLE ov.likvidator_issues DROP COLUMN IF EXISTS company_id;'),
+        #
+        # migrations.RunSQL(sql='ALTER TABLE ov.konkurz_vyrovnanie_issues ADD COLUMN company_id bigint; '
+        #                       'UPDATE ov.konkurz_vyrovnanie_issues AS o SET company_id = c.cin '
+        #                       'FROM ov.companies c WHERE c.cin = o.cin;',
+        #                   reverse_sql='ALTER TABLE ov.konkurz_vyrovnanie_issues DROP COLUMN IF EXISTS company_id;'),
+        #
+        # migrations.RunSQL(sql='ALTER TABLE ov.konkurz_restrukturalizacia_actors ADD COLUMN company_id bigint; '
+        #                       'UPDATE ov.konkurz_restrukturalizacia_actors AS o SET company_id = c.cin '
+        #                       'FROM ov.companies c WHERE c.cin = o.cin;',
+        #                   reverse_sql='ALTER TABLE ov.konkurz_restrukturalizacia_actors '
+        #                               'DROP COLUMN IF EXISTS company_id;'),
     ]
