@@ -10,16 +10,16 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(sql="INSERT INTO ov.companies (cin, name, br_section, address_line, created_at, "
-                          "updated_at, last_update) SELECT DISTINCT ON (cin) "
-                          "cin, "
+        migrations.RunSQL(sql="WITH query AS (SELECT cin, "
                           "corporate_body_name, "
                           "br_section, "
-                          "concat_ws(' ', concat_ws(', ', street, postal_code), city), "
-                          "current_timestamp, "
-                          "current_timestamp, "
-                          "last_value(updated_at) "
-                          "OVER(PARTITION BY cin ORDER BY updated_at DESC) "
-                          "FROM ov.likvidator_issues WHERE cin IS NOT NULL ON CONFLICT (cin) DO NOTHING;",
+                          "concat_ws(' ', concat_ws(', ', street, postal_code), city) address, "
+                          "updated_at, "
+                          "row_number() OVER(PARTITION BY cin ORDER BY updated_at DESC) AS row "
+                          "FROM ov.likvidator_issues WHERE cin IS NOT NULL) "
+                          "INSERT INTO ov.companies "
+                          "(cin, name, br_section, address_line, created_at, updated_at, last_update) "
+                          "SELECT cin, corporate_body_name, br_section, address, current_timestamp, "
+                          "current_timestamp, updated_at FROM query WHERE row = 1 ON CONFLICT DO NOTHING;",
                           reverse_sql='DROP TABLE IF EXISTS ov.companies;')
     ]
