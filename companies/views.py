@@ -44,13 +44,13 @@ def index(request):
         if 'last_update_gte' in params:
             try:
                 dt = parser.parse(params['last_update_gte']).astimezone(pytz.utc)
-                gte = 'date_ge(last_update, \'{}\')'.format(str(dt))
+                gte = 'timestamp_ge(last_update, \'{}\')'.format(str(dt))
             except ValueError:
                 gte = ''
         if 'last_update_lte' in params:
             try:
                 dt = parser.parse(params['last_update_lte']).astimezone(pytz.utc)
-                lte = 'date_le(last_update, \'{}\')'.format(str(dt))
+                lte = 'timestamp_le(last_update, \'{}\')'.format(str(dt))
             except ValueError:
                 lte = ''
         if 'query' in params:
