@@ -22,8 +22,11 @@ def get(request):
                                      'br_insertion': result.br_insertion, 'text': result.text, 'street': result.street,
                                      'postal_code': result.postal_code, 'city': result.city}}
             return JsonResponse(response)
+
+        except OrPodanieIssues.DoesNotExist:
+            return JsonResponse({'error': {'message': 'Zaznam so zadanym ID neexistuje'}}, status=404)
         except ValueError:
-            num = None
+            pass
 
     try:
         page = int(params.get('page', 1))
@@ -269,7 +272,7 @@ def put(request):
     try:
         obj = OrPodanieIssues.objects.get(id=num)
     except OrPodanieIssues.DoesNotExist:
-        return JsonResponse({'error': {'message': 'Zaznam neexistuje'}}, status=404)
+        return JsonResponse({'error': {'message': 'Zaznam so zadanym ID neexistuje'}}, status=404)
 
     body_unicode = request.body.decode('utf-8')
     params = json.loads(body_unicode)

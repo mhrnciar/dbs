@@ -37,14 +37,15 @@ class Companies(models.Model):
 
 class KonkurzRestrukturalizaciaActors(models.Model):
     corporate_body_name = models.CharField(max_length=300, blank=True, null=True)
-    cin = models.ForeignKey(Companies, models.DO_NOTHING, db_column='cin', blank=True, null=True)
+    cin = models.BigIntegerField(blank=True, null=True)
     street = models.CharField(max_length=300, blank=True, null=True)
-    building_number = models.CharField(max_length=20, blank=True, null=True)
-    city = models.CharField(max_length=100, blank=True, null=True)
-    postal_code = models.CharField(max_length=10, blank=True, null=True)
-    country = models.CharField(max_length=50, blank=True, null=True)
+    building_number = models.CharField(max_length=300, blank=True, null=True)
+    city = models.CharField(max_length=300, blank=True, null=True)
+    postal_code = models.CharField(max_length=300, blank=True, null=True)
+    country = models.CharField(max_length=300, blank=True, null=True)
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
+    company = models.ForeignKey(Companies, models.DO_NOTHING, blank=True, null=True)
 
     class Meta:
         managed = False
@@ -94,7 +95,7 @@ class KonkurzVyrovnanieIssues(models.Model):
     court_name = models.CharField(max_length=300)
     file_reference = models.CharField(max_length=300)
     corporate_body_name = models.CharField(max_length=300)
-    cin = models.ForeignKey(Companies, models.DO_NOTHING, db_column='cin', blank=True, null=True)
+    cin = models.BigIntegerField(blank=True, null=True)
     street = models.CharField(max_length=300, blank=True, null=True)
     building_number = models.CharField(max_length=300, blank=True, null=True)
     city = models.CharField(max_length=300, blank=True, null=True)
@@ -105,6 +106,7 @@ class KonkurzVyrovnanieIssues(models.Model):
     announcement = models.TextField()
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
+    company = models.ForeignKey(Companies, models.DO_NOTHING, blank=True, null=True)
 
     class Meta:
         managed = False
@@ -118,7 +120,7 @@ class LikvidatorIssues(models.Model):
     legal_form_code = models.CharField(max_length=300)
     legal_form_name = models.CharField(max_length=300)
     corporate_body_name = models.CharField(max_length=300)
-    cin = models.ForeignKey(Companies, models.DO_NOTHING, db_column='cin')
+    cin = models.BigIntegerField()
     sid = models.CharField(max_length=300, blank=True, null=True)
     street = models.CharField(max_length=300)
     building_number = models.CharField(max_length=300)
@@ -140,6 +142,7 @@ class LikvidatorIssues(models.Model):
     updated_at = models.DateTimeField()
     debtee_legal_form_code = models.CharField(max_length=300, blank=True, null=True)
     debtee_legal_form_name = models.CharField(max_length=300, blank=True, null=True)
+    company = models.ForeignKey(Companies, models.DO_NOTHING, blank=True, null=True)
 
     class Meta:
         managed = False
@@ -168,7 +171,7 @@ class OrPodanieIssues(models.Model):
     br_court_name = models.CharField(max_length=300)
     kind_code = models.CharField(max_length=300)
     kind_name = models.CharField(max_length=300)
-    cin = models.BigIntegerField()
+    cin = models.BigIntegerField(blank=True, null=True)
     registration_date = models.DateField(blank=True, null=True)
     corporate_body_name = models.CharField(max_length=300, blank=True, null=True)
     br_section = models.CharField(max_length=300)
@@ -180,6 +183,7 @@ class OrPodanieIssues(models.Model):
     street = models.CharField(max_length=300, blank=True, null=True)
     postal_code = models.CharField(max_length=300, blank=True, null=True)
     city = models.CharField(max_length=300, blank=True, null=True)
+    company = models.ForeignKey(Companies, models.DO_NOTHING, blank=True, null=True)
 
     class Meta:
         managed = False
@@ -232,7 +236,7 @@ class ZnizenieImaniaIssues(models.Model):
     br_court_name = models.CharField(max_length=300)
     br_section = models.CharField(max_length=300)
     br_insertion = models.CharField(max_length=300)
-    cin = models.ForeignKey(Companies, models.DO_NOTHING, db_column='cin')
+    cin = models.BigIntegerField()
     decision_text = models.TextField(blank=True, null=True)
     decision_date = models.DateField(blank=True, null=True)
     equity_currency_code = models.CharField(max_length=300)
@@ -243,6 +247,7 @@ class ZnizenieImaniaIssues(models.Model):
     first_ov_released_number = models.CharField(max_length=300, blank=True, null=True)
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
+    company = models.ForeignKey(Companies, models.DO_NOTHING, blank=True, null=True)
 
     class Meta:
         managed = False
