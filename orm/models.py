@@ -168,7 +168,7 @@ class OrPodanieIssues(models.Model):
     br_court_name = models.CharField(max_length=300)
     kind_code = models.CharField(max_length=300)
     kind_name = models.CharField(max_length=300)
-    cin = models.ForeignKey(Companies, models.DO_NOTHING, db_column='cin', blank=True, null=True)
+    cin = models.BigIntegerField()
     registration_date = models.DateField(blank=True, null=True)
     corporate_body_name = models.CharField(max_length=300, blank=True, null=True)
     br_section = models.CharField(max_length=300)
