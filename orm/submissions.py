@@ -42,9 +42,11 @@ def get(request):
     if per_page < 1:
         per_page = 10
 
-    page_num = (page - 1) * per_page
-
-    order_type = params.get('order_type', 'desc').lower()
+    order_type = params.get('order_type', 'asc').lower()
+    if order_type == 'desc':
+        order_type = '-'
+    else:
+        order_type = ''
 
     order_params = params.get('order_by', '?').replace(' ', '').lower().split(',')
     order_list = []
@@ -52,7 +54,7 @@ def get(request):
     for column in order_params:
         if column in ('id', 'br_court_name', 'kind_name', 'cin', 'registration_date', 'corporate_body_name',
                       'br_section', 'br_insertion', 'text', 'street', 'postal_code', 'city'):
-            order_list.append(column)
+            order_list.append(order_type + column)
 
     gte = ''
     lte = ''
@@ -137,10 +139,15 @@ def get(request):
             total = OrPodanieIssues.objects.all().count()
             result = OrPodanieIssues.objects.all()
 
-    if order_type == 'desc':
-        first_ordered = result.order_by(*order_list)
-        result = first_ordered.order_by(F(order_list[0]).desc(nulls_last=True))[page_num:(page_num + per_page)]
-    else:
+    page_num = (page - 1) * per_page
+
+    if len(order_list) > 1 and order_type == '-':
+        first = order_list[0].replace('-', '')
+        order_list.pop(0)
+        result = result.order_by(F(first).desc(nulls_last=True), *order_list)[page_num:(page_num + per_page)]
+    elif len(order_list) == 1 and order_type == '-':
+        result = result.order_by(F(order_list[0]).desc(nulls_last=True))[page_num:(page_num + per_page)]
+    elif order_type == '':
         result = result.order_by(*order_list)[page_num:(page_num + per_page)]
 
     response = {'items': []}
@@ -276,6 +283,8 @@ def put(request):
 
     body_unicode = request.body.decode('utf-8')
     params = json.loads(body_unicode)
+    if len(params) == 0:
+        return JsonResponse({'error': {'message': 'Neboli zadane ziadne parametre'}}, status=422)
 
     errorstr = {'errors': []}
 
@@ -327,6 +336,9 @@ def put(request):
 
     address = obj.street + ', ' + obj.postal_code + ' ' + obj.city
     obj.address_line = address
+
+    if len(errorstr['errors']) != 0:
+        return JsonResponse(errorstr, status=422)
 
     obj.save()
     or_podanie_id = obj.id
