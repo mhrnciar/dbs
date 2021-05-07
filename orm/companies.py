@@ -155,11 +155,35 @@ def get(request):
     response['metadata'] = {'page': page, 'per_page': per_page, 'pages': pages_count, 'total': total}
 
     for row in result:
-        entry = {'cin': row.cin, 'name': row.name, 'br_section': row.br_section, 'address_line': row.address_line,
-                 'last_update': str(row.last_update), 'or_podanie_issues_count': row.or_podanie_issues_count,
-                 'znizenie_imania_issues_count': row.znizenie_imania_issues_count,
-                 'likvidator_issues_count': row.likvidator_issues_count,
-                 'konkurz_vyrovnanie_issues_count': row.konkurz_vyrovnanie_issues_count,
-                 'konkurz_restrukturalizacia_actors_count': row.konkurz_restrukturalizacia_actors_count}
+        if row.or_podanie_issues_count != 0:
+            opic = row.or_podanie_issues_count
+        else:
+            opic = None
+        if row.znizenie_imania_issues_count != 0:
+            ziic = row.znizenie_imania_issues_count
+        else:
+            ziic = None
+        if row.likvidator_issues_count != 0:
+            lic = row.likvidator_issues_count
+        else:
+            lic = None
+        if row.konkurz_vyrovnanie_issues_count != 0:
+            kvic = row.konkurz_vyrovnanie_issues_count
+        else:
+            kvic = None
+        if row.konkurz_restrukturalizacia_actors_count != 0:
+            krac = row.konkurz_restrukturalizacia_actors_count
+        else:
+            krac = None
+        if row.address_line != "":
+            address = row.address_line
+        else:
+            address = None
+        entry = {'cin': row.cin, 'name': row.name, 'br_section': row.br_section, 'address_line': address,
+                 'last_update': str(row.last_update), 'or_podanie_issues_count': opic,
+                 'znizenie_imania_issues_count': ziic,
+                 'likvidator_issues_count': lic,
+                 'konkurz_vyrovnanie_issues_count': kvic,
+                 'konkurz_restrukturalizacia_actors_count': krac}
         response['items'].append(entry)
     return JsonResponse(response)
