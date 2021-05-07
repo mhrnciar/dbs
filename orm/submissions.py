@@ -299,15 +299,17 @@ def put(request):
             cin = int(params['cin'])
             obj.cin = cin
         except ValueError:
-            errorstr['errors'].append({'field': 'cin', 'reasons': 'invalid'})
+            errorstr['errors'].append({'field': 'cin', 'reasons': 'not_number'})
 
     if 'registration_date' in params:
         try:
             dt = parser.parse(params['registration_date']).astimezone(pytz.utc)
             date = datetime.date(dt.year, dt.month, dt.day)
             obj.registration_date = date
+            if date > datetime.datetime.today():
+                errorstr['errors'].append({'field': 'registration_date', 'reasons': 'invalid_range'})
         except ValueError:
-            errorstr['errors'].append({'field': 'registration_date', 'reasons': 'invalid'})
+            errorstr['errors'].append({'field': 'registration_date', 'reasons': 'not_date'})
 
     if 'corporate_body_name' in params:
         obj.corporate_body_name = params['corporate_body_name']
@@ -322,20 +324,31 @@ def put(request):
         obj.text = params['text']
 
     if 'street' in params:
-        obj.street = params['street']
+        try:
+            int(params['street'])
+            errorstr['errors'].append({'field': 'street', 'reasons': 'not_string'})
+        except ValueError:
+            obj.street = params['street']
 
     if 'postal_code' in params:
         try:
             int(params['postal_code'])
             obj.postal_code = params['postal_code']
         except ValueError:
-            errorstr['errors'].append({'field': 'postal_code', 'reasons': 'invalid'})
+            errorstr['errors'].append({'field': 'postal_code', 'reasons': 'not_number'})
 
     if 'city' in params:
-        obj.city = params['city']
+        try:
+            int(params['city'])
+            errorstr['errors'].append({'field': 'city', 'reasons': 'not_string'})
+        except ValueError:
+            obj.street = params['city']
 
     address = obj.street + ', ' + obj.postal_code + ' ' + obj.city
     obj.address_line = address
+
+    now = datetime.datetime.now()
+    obj.updated_at = now
 
     if len(errorstr['errors']) != 0:
         return JsonResponse(errorstr, status=422)

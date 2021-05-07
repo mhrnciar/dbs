@@ -2,7 +2,6 @@
 
 from django.db import migrations
 from django.db import models
-from orm import models as m
 
 
 class Migration(migrations.Migration):
